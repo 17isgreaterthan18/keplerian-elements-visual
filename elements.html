@@ -1,11 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elements Visual</title>
 
-    <link rel="stylesheet" href="elements.css">
+    <link rel="stylesheet" href="./elements.css">
 
     <script type="importmap">
         {
@@ -17,7 +16,7 @@
     </script>
 </head>
 <body>
-    <script type="module" src="visual.js"></script>
+    <script type="module" src="./visual.js"></script>
     
     <datalist id="true-anomaly-marker">
         <option value="-180"></option>
@@ -31,7 +30,7 @@
         <div id="true-anomaly-cont">
             <br>
             <label for="true-anomaly">
-                <span class="true-anomaly-display slider-value">0</span>&deg;
+                <span class="true-anomaly-display slider-value">0</span>°
                 <span class="def">True Anomaly</span>
                 <span class="symbol">&nu;</span>
             </label>
@@ -40,16 +39,16 @@
         <div id="angles">
             <div id="periapsis-argument-cont">
                 <label for="periapsis-argument">
-                <span class="periapsis-argument-display slider-value">0</span>&deg;
+                <span class="periapsis-argument-display slider-value">0</span>°
                 <span class="def">Periapsis Argument</span>
-                <span class="symbol">&omega;</span><br>
+                <span class="symbol">ω</span><br>
 
                 </label>
                 <input type="range" name="periapsis argument" id="periapsis-argument" min="0" max="360" step="0.1" value="0" list="periapsis-argument-marker">
             </div>
             <div id="inclination-cont">
                 <label for="inclination">
-                <span class="inclination-display slider-value">45</span>&deg;
+                <span class="inclination-display slider-value">45</span>°
                 <span class="def">Inclination</span>
                 <span class="symbol">&ii;</span>
                 <br>
@@ -61,7 +60,7 @@
             </div>
             <div id="longitude-cont">
                 <label for="longitude">
-                <span class="longitude-display slider-value">0</span>&deg;
+                <span class="longitude-display slider-value">0</span>°
                 <span class="def">Longitude</span>
                 <span class="symbol">&Omega;</span>
                 <br>
@@ -93,29 +92,28 @@
             - <span id="grade" class="def">prograde</span> -
             
             <br><span class="def" style="color: #bb0000;">True Anomaly</span>
-            <span class="symbol">&nu;</span> =
-            <span class="true-anomaly-display slider-value">0</span>&deg;
+            <span class="symbol">ν</span> =
+            <span class="true-anomaly-display slider-value">0</span>°
             
             <br><span class="def" style="color: #ffc0cb;">Eccentric Anomaly</span>
             <span class="symbol"><i>E</i></span> =
-            <span class="eccentric-anomaly-display slider-value">0</span>&deg;
+            <span class="eccentric-anomaly-display slider-value">0</span>°
 
             <br><span class="def" style="color: #00dd00;">Mean Anomaly</span>
             <span class="symbol"><i>M</i></span> =
-            <span class="mean-anomaly-display slider-value">0</span>&deg;
+            <span class="mean-anomaly-display slider-value">0</span>°
 
             <div id="info">
-                <p>click on terms for explanation</p>
-                <p><a href="references.html" target="_blank">references</a></p>
+                <p>click terms for explanation</p>
+                <p><a href="http://wyattrobinson.org/misc/physics-project/references.html" target="_blank">references</a></p>
                 <p>created by wyatt robinson :)</p>
             </div>
         </div>
     </div>
     <div id="def-box" class="popup">
-        <div id="popup-close">&Xopf;</div>
+        <div id="popup-close">𝕏</div>
         <h1 id="def-title">term</h1>
         <div id="def-desc">definition</div>
     </div>
     <div id="def-bg" class="popup"></div>
-</body>
-</html>
+</body></html>

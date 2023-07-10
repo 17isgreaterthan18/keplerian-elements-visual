@@ -2,14 +2,12 @@ import * as THREE from 'three';
 import { SVGRenderer } from 'three/addons/renderers/SVGRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-let display_true_anomaly = 0;
-let display_periapsis_argument = 0;
-let display_inclination = Math.PI / 4;
-let display_longitude = 0;
-let display_eccentricity = 0.5;
-let display_semimajor = 10;
-let display_res = 0.05;
-let orbit_desc = [display_true_anomaly, display_eccentricity, display_semimajor, display_periapsis_argument, display_inclination, display_longitude, display_res]
+const DEFAULT_periapsis_argument = 0,
+	DEFAULT_inclination = Math.PI / 4,
+	DEFAULT_longitude = 0,
+	DEFAULT_eccentricity = 0.5,
+	DEFAULT_semimajor_axis = 10,
+	default_resolution = 0.05;
 
 let renderer = new SVGRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -42,145 +40,293 @@ const refplane = new THREE.PolarGridHelper(10);
 refplane.rotation.x = 0.5 * Math.PI;
 scene.add(refplane);
 
-let orbit_points = plot_orbit(display_eccentricity, display_semimajor, display_periapsis_argument, display_inclination, display_longitude, display_res);
-orbit_points.push(orbit_points[0]);
-const orbit_mat = new THREE.LineBasicMaterial({color: 0x0000ff, linewidth: 4});
-let orbit_geo = new THREE.BufferGeometry().setFromPoints(orbit_points);
-let orbit = new THREE.LineLoop(orbit_geo, orbit_mat);
-scene.add(orbit);
+export class Orbit {
+	resolution = default_resolution;
+	color = 0x0000ff;
+	apsidesLineColor = 0xaaaa00;
+	arrowColor = 0xffff00;
+	satellites = [];
 
-const satellite_mat = new THREE.MeshBasicMaterial({color: 0xff0000});
-const satellite_geo = new THREE.OctahedronGeometry(0.13, 5);
-const satellite = new THREE.Mesh(satellite_geo, satellite_mat);
-satellite.position.copy(plot_orbit_point());
-scene.add(satellite);
+	constructor(eccentricity, semimajor_axis, periapsis_argument, inclination, longitude) {
+		this.eccentricity = eccentricity;
+		this.semimajor_axis = semimajor_axis;
+		this.periapsis_argument = periapsis_argument;
+		this.inclination = inclination;
+		this.longitude = longitude;
+	}
+	drawInitial(resolution = this.resolution) {
+		this.orbitObject = this.drawOrbit(resolution);
+		this.apsidesLine = this.drawApsidesLine();
+		this.arrowObject = this.drawArrow();
 
-let arrowVectors = getArrowVectors();
-const arrow = new THREE.ArrowHelper(arrowVectors[0], arrowVectors[1], 3, 0xffff00)
-scene.add(arrow);
+		const satelliteObjects = [];
+		this.satellites.forEach( (satellite) => {
+			satelliteObjects.push(...satellite.drawInitial());
+		})
+		console.log(satelliteObjects);
+		return [this.orbitObject, this.apsidesLine, this.arrowObject, ...satelliteObjects];
+	}
+	update(resolution = this.resolution) {
+		const orbitGeometry = new THREE.BufferGeometry().setFromPoints(this.plot(resolution));
+		this.orbitObject.geometry.copy(orbitGeometry);
+		orbitGeometry.dispose();
+		
+		const apsidesLinePoints = [this.plotPoint(0), this.plotPoint(Math.PI)];
+		const apsides_geo = new THREE.BufferGeometry().setFromPoints(apsidesLinePoints);
+		this.apsidesLine.geometry.copy(apsides_geo);
+		apsides_geo.dispose();
+		
+		const arrow_vectors = this.getArrowVectors();
+		this.arrowObject.setDirection(arrow_vectors.direction);
+		this.arrowObject.position.copy(arrow_vectors.origin);
 
-const apsides_line_mat = new THREE.LineDashedMaterial({color: 0xaaaa00, linewidth: 1, gapsize: 4, dashsize: 5, scale: 1});
-let apsides_line_points = [plot_orbit_point(0), plot_orbit_point(Math.PI)];
-let apsides_line_geo = new THREE.BufferGeometry().setFromPoints(apsides_line_points);
-const apsides_line = new THREE.Line(apsides_line_geo, apsides_line_mat);
-scene.add(apsides_line);
+		this.satellites.forEach( (satellite) => {
+			satellite.update();
+		})
+	}
+	drawOrbit(resolution = this.resolution) {
+		
+		const points = this.plot();
+		points.push(points[0]);
+		
+		const material = new THREE.LineBasicMaterial({color: this.color, linewidth: 4});
+		const geometry = new THREE.BufferGeometry().setFromPoints(points);
+		const object = new THREE.LineLoop(geometry, material);
+		object.name = 'orbit';
 
-// let velocity = orbit_point_velocity();
+		return object;
+	}
+	drawApsidesLine() {
+		const material = new THREE.LineDashedMaterial({color: this.apsidesLineColor, linewidth: 1, gapsize: 4, dashsize: 5, scale: 1});
+		const points = [this.plotPoint(0), this.plotPoint(Math.PI)];
+		const geometry = new THREE.BufferGeometry().setFromPoints(points);
+		const object = new THREE.Line(geometry, material);
+		object.name = 'apsides-line';
+
+		return object;
+	}
+	drawArrow() {
+		const vectors = this.getArrowVectors();
+		const arrow = new THREE.ArrowHelper(vectors.direction, vectors.origin, 3, this.arrowColor);
+
+		return arrow;
+	}
+	getArrowVectors() {
+		const point1 = this.plotPoint(1.5 * Math.PI / 2);
+		const point2 = this.plotPoint(1.5 * Math.PI / 2 + 0.3)
+		
+		const dir_x = point2.x - point1.x;
+		const dir_y = point2.y - point1.y;
+		const dir_z = point2.z - point1.z;
+		const org = point1.clone().multiplyScalar(1.1);
+	
+		const dir = new THREE.Vector3(dir_x, dir_y, dir_z);
+		dir.normalize();
+		return {direction: dir, origin: org};
+	}
+	plot(res = this.resolution) {
+		let points = [];
+		for (let angle = 0; angle < (2 * Math.PI); angle += res) {
+			let point = this.plotPoint(angle);
+			points.push(point);
+		}
+		return points;
+	}
+	plotPoint(true_anomaly) {
+		let r = this.getRadius(true_anomaly),
+			x = r * Math.cos(true_anomaly),
+			y = r * Math.sin(true_anomaly);
+		
+		let point = new THREE.Vector3(x, y, 0);
+
+		return this.toEquatorial(point);
+	}
+	getRadius(true_anomaly) {
+		const semi_latus_rectum = this.semimajor_axis * (1 - Math.pow(this.eccentricity, 2));
+		return semi_latus_rectum / (1 + this.eccentricity * Math.cos(true_anomaly));
+	}
+	toEquatorial(preimage) {
+		let image = preimage.applyAxisAngle(new THREE.Vector3(0, 0, 1), this.periapsis_argument);
+		image.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.inclination);
+		image.applyAxisAngle(new THREE.Vector3(0, 0, 1), this.longitude);
+
+		return image;
+	}
+	getEccentricAnomaly(true_anomaly) {
+		let eccentric_anomaly = Math.atan2((Math.sqrt(1 - Math.pow(this.eccentricity, 2)) * Math.sin(true_anomaly)) / (1 + this.eccentricity * Math.cos(true_anomaly)), (this.eccentricity + Math.cos(true_anomaly)) / (1 + this.eccentricity * Math.cos(true_anomaly)));
+		eccentric_anomaly += this.#getAnomalyCorrection(true_anomaly);
+
+		return eccentric_anomaly;
+	}
+	getMeanAnomaly(true_anomaly) {
+		const eccentric_anomaly = this.getEccentricAnomaly(true_anomaly) - this.#getAnomalyCorrection(true_anomaly);
+		let mean_anomaly = eccentric_anomaly - this.eccentricity * Math.sin(eccentric_anomaly);
+		mean_anomaly += this.#getAnomalyCorrection(true_anomaly);
+
+		return mean_anomaly;
+	}
+	#getAnomalyCorrection(true_anomaly) {
+		if (Math.abs(true_anomaly) > Math.PI) {
+			return (true_anomaly > 0) ? 2 * Math.PI : -2 * Math.PI;
+		}
+		return 0;
+	}
+	getCenter() {
+		const centerX = -1 * this.eccentricity * this.semimajor_axis; // x coord of center in perifocal frame
+		return this.toEquatorial(new THREE.Vector3(centerX, 0, 0));
+	}
+}
+
+export class Satellite {
+	color = 0xff0000;
+	trueAnomalyColor = 0xdd0000;
+	eccentricAnomalyColor = 0xffc0cb;
+	meanAnomalyColor = 0x00dd00;
+	size = 0.15; // radius of satellite
+	trueAnomaly = 0;
+	parentOrbit;
+
+	constructor(parent_orbit, initial_true_anomaly = this.trueAnomaly) {
+		this.parentOrbit = parent_orbit;
+		this.parentOrbit.satellites.push(this);
+
+		this.trueAnomaly = initial_true_anomaly;
+	}
+	drawInitial() {
+		this.satelliteObject = this.drawSatellite();
+		this.drawAnomalies().forEach( (item) => {
+			this[`${item.name}AnomalyObject`] = item;
+		})
+		
+		return [this.satelliteObject, this.trueAnomalyObject, this.eccentricAnomalyObject, this.meanAnomalyObject]
+	}
+	update() {
+		this.satelliteObject.position.copy(this.getPosition);
+
+		this.trueAnomalyObject.geometry = new THREE.BufferGeometry().setFromPoints(this.plotTrueAnomaly());
+		this.eccentricAnomalyObject.geometry = new THREE.BufferGeometry().setFromPoints(this.plotEccentricAnomaly());
+		this.meanAnomalyObject.geometry = new THREE.BufferGeometry().setFromPoints(this.plotMeanAnomaly());
+
+	}
+	drawSatellite() {
+		const material = new THREE.MeshBasicMaterial({color: this.color});
+		const geometry = new THREE.OctahedronGeometry(this.size, 3);
+		geometry.name = 'satellite geo';
+		const object = new THREE.Mesh(geometry, material);
+		object.name = 'satellite';
+
+		object.position.copy(this.getPosition());
+
+		return object;
+	}
+	getPosition() {
+		return this.parentOrbit.plotPoint(this.trueAnomaly);
+	}
+	getEccentricAnomaly() {
+		return this.parentOrbit.getEccentricAnomaly(this.trueAnomaly);
+	}
+	getMeanAnomaly() {
+		return this.parentOrbit.getMeanAnomaly(this.trueAnomaly);
+	}
+	plotTrueAnomaly() {
+		const point1 = new THREE.Vector3(0, 0, 0);
+		const point2 = this.getPosition();
+		return [point1, point2];
+	}
+	plotEccentricAnomaly() {
+		const eccentric_anomaly = this.getEccentricAnomaly();
+		const semimajor_axis = this.parentOrbit.semimajor_axis;
+		
+		const point1 = this.parentOrbit.getCenter();
+		const point2 = this.parentOrbit.toEquatorial(new THREE.Vector3(
+			semimajor_axis * Math.cos(eccentric_anomaly),
+			semimajor_axis * Math.sin(eccentric_anomaly),
+			0));
+		return [point1, point2];
+	}
+	plotMeanAnomaly() {
+		const mean_anomaly = this.getMeanAnomaly();
+		const semimajor_axis = this.parentOrbit.semimajor_axis;
+
+		const point1 = this.parentOrbit.getCenter();
+		const point2 = this.parentOrbit.toEquatorial(new THREE.Vector3(
+			semimajor_axis * Math.cos(mean_anomaly),
+			semimajor_axis * Math.sin(mean_anomaly),
+			0));
+		return [point1, point2];
+	}
+	drawAnomalies() {
+		let objects = [];
+		[
+			[this.plotTrueAnomaly(), this.trueAnomalyColor, 'true'],
+			[this.plotEccentricAnomaly(), this.eccentricAnomalyColor, 'eccentric'],
+			[this.plotMeanAnomaly(), this.meanAnomalyColor, 'mean']
+		].forEach( (anomaly) => {
+			const material = new THREE.LineDashedMaterial({color: anomaly[1], linewidth: 1, scale: 1});
+			const geometry = new THREE.BufferGeometry().setFromPoints(anomaly[0]);
+			geometry.name = anomaly[2];
+
+			const object = new THREE.Line(geometry, material);
+			object.name = anomaly[2];
+
+			objects.push(object);
+		})
+		return objects;
+	}
+}
 
 
+export const orbit = new Orbit(DEFAULT_eccentricity, DEFAULT_semimajor_axis, DEFAULT_periapsis_argument, DEFAULT_inclination, DEFAULT_longitude);
+export const satellite = new Satellite(orbit);
+
+scene.add(...orbit.drawInitial());
+
+let previous_params = [satellite.trueAnomaly, orbit.eccentricity, orbit.semimajor_axis, orbit.periapsis_argument, orbit.inclination, orbit.longitude];
 function animate() {
 	
 	controls.update();
-
-	const new_orbit_desc = [display_true_anomaly, display_eccentricity, display_semimajor, display_periapsis_argument, display_inclination, display_longitude, display_res];
-
-	if (!orbit_desc.every((item, index) => {
-		return item === new_orbit_desc[index]
+	
+	let current_params = [satellite.trueAnomaly, orbit.eccentricity, orbit.semimajor_axis, orbit.periapsis_argument, orbit.inclination, orbit.longitude]
+	if (!current_params.every( (element, index) => {
+		return element === previous_params[index];
 	})) {
-		new_orbit();
-		orbit_desc = new_orbit_desc;
+		previous_params = current_params;
+		orbit.update();
+		updateAnomalyDisplays();
 	}
+
 	requestAnimationFrame(animate);
 	renderer.render(scene, camera);
+
+	function updateAnomalyDisplays() {
+		const eccentric_anomaly = satellite.getEccentricAnomaly();
+		Array.from(document.getElementsByClassName('eccentric-anomaly-display'))
+			.forEach( (element) => {
+				element.innerHTML = THREE.MathUtils.radToDeg(eccentric_anomaly).toFixed(1);
+			})
+		const mean_anomaly = satellite.getMeanAnomaly();
+		Array.from(document.getElementsByClassName('mean-anomaly-display'))
+			.forEach( (element) => {
+				element.innerHTML = THREE.MathUtils.radToDeg(mean_anomaly).toFixed(1);
+			})
+	}
 }
 
 animate();
-
-function plot_orbit(eccentricity, semimajor, periapsis_arg, inclination, longitude, resolution) {
-	let points = [];
-	for (let angle = 0; angle < (2 * Math.PI); angle += resolution) {
-		let pos = plot_orbit_point(angle, eccentricity, semimajor, periapsis_arg, inclination, longitude);
-		points.push(pos);
-	}
-	return points;
-}
-
-function plot_orbit_point(true_anomaly = display_true_anomaly, eccentricity = display_eccentricity, semimajor_axis = display_semimajor, periapsis_arg = display_periapsis_argument, inclination = display_inclination, longitude = display_longitude) {
-	const semi_latus_rectum = semimajor_axis * (1 - Math.pow(eccentricity, 2))
-
-	let r = semi_latus_rectum / (1 + eccentricity * Math.cos(true_anomaly));
-	let x = r * Math.cos(true_anomaly);
-	let y = r * Math.sin(true_anomaly);
-
-	let pos = new THREE.Vector3(x, y, 0);
-
-	let image = to_equatorial(pos, periapsis_arg, inclination, longitude);
-
-	return image;
-}
-function r(true_anomaly = display_true_anomaly, eccentricity = display_eccentricity, semimajor_axis = display_semimajor, periapsis_arg = display_periapsis_argument, inclination = display_inclination, longitude = display_longitude) {
-	const semi_latus_rectum = semimajor_axis * (1 - Math.pow(eccentricity, 2))
-	return semi_latus_rectum / (1 + eccentricity * Math.cos(true_anomaly));
-}
-
-function orbit_point_velocity(orbital_parameter, true_anomaly = display_true_anomaly, eccentricity = display_eccentricity, semimajor_axis = display_semimajor, periapsis_arg = display_periapsis_argument, inclination = display_inclination, longitude = display_longitude) {
-	const semi_latus_rectum = semimajor_axis * (1 - Math.pow(eccentricity, 2));
-	const coefficient = Math.sqrt(orbital_parameter / semi_latus_rectum);
-
-	x = -coefficient * Math.sin(true_anomaly);
-	y = coefficient * (eccentricity + Math.cos(true_anomaly));
-	let velocity = new THREE.Vector3(x, y, 0);
-	velocity = to_equatorial(velocity, periapsis_arg, inclination, longitude);
-
-	return velocity;
-}
-
-function to_equatorial(pos, periapsis_arg, inclination, longitude) {
-	let image = pos.applyAxisAngle(new THREE.Vector3(0, 0, 1), periapsis_arg);
-	image.applyAxisAngle(new THREE.Vector3(0, 1, 0), inclination);
-	image.applyAxisAngle(new THREE.Vector3(0, 0, 1), longitude)
-
-	return image;
-}
-
-function new_orbit() {
-	scene.remove(scene.getObjectById(orbit.id));
-	orbit_points = plot_orbit(display_eccentricity, display_semimajor, display_periapsis_argument, display_inclination, display_longitude, display_res);
-	orbit_geo = new THREE.BufferGeometry().setFromPoints(orbit_points);
-	orbit = new THREE.LineLoop(orbit_geo, orbit_mat);
-	scene.add(orbit);
-	satellite.position.copy(plot_orbit_point());
-	arrowVectors = getArrowVectors();
-	arrow.setDirection(arrowVectors[0]);
-	arrow.position.copy(arrowVectors[1]);
-	apsides_line_points = [plot_orbit_point(0), plot_orbit_point(Math.PI)];
-	apsides_line_geo = new THREE.BufferGeometry().setFromPoints(apsides_line_points);
-	apsides_line.geometry = apsides_line_geo;	
-}
-
-function getCenter(eccentricity = display_eccentricity, semimajor_axis = display_semimajor, periapsis_arg = display_periapsis_argument, inclination = display_inclination, longitude = display_longitude) {
-	const x = -1 * eccentricity * semimajor_axis;
-	return to_equatorial(new THREE.Vector3(x, 0, 0), periapsis_arg, inclination, longitude);
-}
-
-function getArrowVectors() {
-	const point1 = plot_orbit_point(1.5 * Math.PI / 2);
-	const point2 = plot_orbit_point(1.5 * Math.PI / 2 + 0.3)
-	
-	const dir_x = point2.x - point1.x;
-	const dir_y = point2.y - point1.y;
-	const dir_z = point2.z - point1.z;
-	const org = point1.clone().multiplyScalar(1.1);
-
-	const dir = new THREE.Vector3(dir_x, dir_y, dir_z);
-	dir.normalize();
-	return [dir, org];
-}
 
 function init() {
 	const input_value_display = function(element_tag, value) {
 		Array.from(document.getElementsByClassName(element_tag + '-display')).forEach((element) => {
 			element.innerText = value;
 		});
-		updateAnomalies();
 	}
-	
+
 	document.getElementById('true-anomaly').addEventListener('input', (event) => {
-		display_true_anomaly = THREE.MathUtils.degToRad(parseFloat(event.target.value));
+		satellite.trueAnomaly = THREE.MathUtils.degToRad(parseFloat(event.target.value));
 		input_value_display(event.target.id, parseFloat(event.target.value).toFixed(1));
 	})
 	document.getElementById('periapsis-argument').addEventListener('input', (event) => {
-		display_periapsis_argument = THREE.MathUtils.degToRad(parseFloat(event.target.value));
+		orbit.periapsis_argument = THREE.MathUtils.degToRad(parseFloat(event.target.value));
 		if (document.getElementById('eccentricity').value == 0) {
 			input_value_display(event.target.id, 'Undef');			
 		} else {
@@ -189,8 +335,9 @@ function init() {
 	})
 	document.getElementById('inclination').addEventListener('input', (event) => {
 		const grade = document.getElementById('grade');
-		display_inclination = THREE.MathUtils.degToRad(parseFloat(event.target.value));
+		orbit.inclination = THREE.MathUtils.degToRad(parseFloat(event.target.value));
 		input_value_display(event.target.id, event.target.value);
+		
 		if (event.target.value == 90.0) {
 			grade.style.color = 'white';
 			grade.innerHTML = 'polar';
@@ -206,22 +353,21 @@ function init() {
 			document.getElementById('longitude').dispatchEvent(new Event('input'));
 	})
 	document.getElementById('longitude').addEventListener('input', (event) => {
-		
 		if (document.getElementById('inclination').value % 180 == 0) {
 			input_value_display(event.target.id, 'Undef');
-			display_longitude = 0;
+			DEFAULT_longitude = 0;
 		} else {
-			display_longitude = THREE.MathUtils.degToRad(parseFloat(event.target.value));
+			orbit.longitude = THREE.MathUtils.degToRad(parseFloat(event.target.value));
 			input_value_display(event.target.id, event.target.value);
 		}
 	})
 	document.getElementById('eccentricity').addEventListener('input', (event) => {
-		display_eccentricity = parseFloat(event.target.value);
+		orbit.eccentricity = parseFloat(event.target.value);
 		input_value_display(event.target.id, event.target.value);
 		document.getElementById('periapsis-argument').dispatchEvent(new Event('input'));
 	})
 	document.getElementById('semi-major').addEventListener('input', (event) => {
-		display_semimajor = parseFloat(event.target.value);
+		orbit.semimajor_axis = parseFloat(event.target.value);
 		input_value_display(event.target.id, event.target.value);
 	})
 
@@ -235,50 +381,8 @@ function init() {
 		})
 	})
 }
-function updateAnomalies(true_anomaly = display_true_anomaly, eccentricity = display_eccentricity) {
 
-	let eccentric_anomaly = Math.atan2((Math.sqrt(1 - Math.pow(eccentricity, 2)) * Math.sin(true_anomaly)) / (1 + eccentricity * Math.cos(true_anomaly)), (eccentricity + Math.cos(true_anomaly)) / (1 + eccentricity * Math.cos(true_anomaly)));
-
-	let mean_anomaly = eccentric_anomaly - eccentricity * Math.sin(eccentric_anomaly);
-
-	if (Math.abs(true_anomaly) > Math.PI) {
-		const correction = (true_anomaly > 0) ? 2 * Math.PI : -2 * Math.PI;
-		eccentric_anomaly += correction;
-		mean_anomaly += correction;
-	}
-
-	drawAnomalies(true_anomaly, eccentric_anomaly, mean_anomaly);
-
-	Array.from(document.getElementsByClassName('eccentric-anomaly-display')).forEach( (element) => {
-		element.innerText = THREE.MathUtils.radToDeg(eccentric_anomaly).toFixed(1);
-	})
-	Array.from(document.getElementsByClassName('mean-anomaly-display')).forEach( (element) => {
-		element.innerText = THREE.MathUtils.radToDeg(mean_anomaly).toFixed(1);
-	})
-}
-function drawAnomalies(true_anomaly = display_true_anomaly, eccentric_anomaly, mean_anomaly, eccentricity = display_eccentricity, semimajor_axis = display_semimajor, periapsis_arg = display_periapsis_argument, inclination = display_inclination, longitude = display_longitude) {
-	const center = getCenter(eccentricity, semimajor_axis, periapsis_arg, inclination, longitude);
-
-	while (scene.getObjectByName('anomaly_line')) {
-		scene.remove(scene.getObjectByName('anomaly_line'));
-	}
-
-	[[true_anomaly, 0xdd0000, r(), false], [eccentric_anomaly, 0xffc0cb, semimajor_axis, true], [mean_anomaly, 0x00dd00, semimajor_axis, true]].forEach( (item) => {
-		let mat = new THREE.LineDashedMaterial({color: item[1], linewidth: 1, gapsize: 4, dashsize: 5, scale: 1});
-
-		let point1 = item[3] ? center : new THREE.Vector3(0, 0, 0);
-		let point2 = to_equatorial(new THREE.Vector3(item[2] * Math.cos(item[0]), item[2] * Math.sin(item[0]), 0), periapsis_arg, inclination, longitude);
-		let geo = new THREE.BufferGeometry().setFromPoints([point1, point2]);
-
-		let object = new THREE.Line(geo, mat);
-		object.name = 'anomaly_line';
-
-		scene.add(object);
-
-	})
-}
-
-const def_content = new Map();
+export const def_content = new Map();
 def_content.set('true anomaly', {
 	term: 'true anomaly',
 	symbol: '&nu;',
@@ -320,7 +424,7 @@ def_content.set('semi-major axis', {
 	definition: 'The semi-major axis, {<i>a</i>}, is half the length of the major axis of an elliptical orbit. It is also equal to half the sum of the altitude at periapsis and apoapsis.[1]'
 });
 
-function definitionPopup(term) {
+export function definitionPopup(term) {
 	if (term.includes('prograde') || term.includes('polar') || term.includes('retrograde')) {
 		term = 'inclination';
 	}
@@ -330,6 +434,7 @@ function definitionPopup(term) {
 	const reference_postfix = '</a>]</sup>';
 
 	document.getElementById('def-title').innerHTML = `${content.term} <span class="def-symbol">${content.symbol}</span>`;
+	
 	let bodytext = content.definition.replaceAll('@', '<br>');
 	bodytext = bodytext.replaceAll('[1]', reference_prefix + 'one">1' + reference_postfix).replaceAll('[2]', reference_prefix + 'two">2' + reference_postfix);
 	bodytext = bodytext.replaceAll('{', '<span class="symbol">').replaceAll('}', '</span>');
