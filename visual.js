@@ -9,13 +9,15 @@ const DEFAULT_periapsis_argument = 0,
 	DEFAULT_semimajor_axis = 10,
 	default_resolution = 0.05;
 
+const viewportContainer = document.getElementById('viewport-container');
+
 let renderer = new SVGRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+renderer.setSize(viewportContainer.clientWidth, viewportContainer.clientHeight);
+viewportContainer.appendChild(renderer.domElement);
 
 init();
 
-const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+const camera = new THREE.PerspectiveCamera( 75, viewportContainer.clientWidth / viewportContainer.clientHeight, 0.1, 1000 );
 camera.up = new THREE.Vector3(0, 0, 1);
 camera.position.set(20, 20, 10);
 camera.lookAt(0, 0, 0)
@@ -30,6 +32,13 @@ controls.autoRotateSpeed = 4.0;
 
 let scene = new THREE.Scene();
 scene.background = new THREE.Color(0, 0, 0);
+
+viewportContainer.addEventListener('resize', () => {
+	camera.aspect = viewportContainer.clientWidth / viewportContainer.clientHeight;
+	camera.updateProjectionMatrix();
+
+	renderer.setSize(viewportContainer.clientWidth, viewportContainer.clientHeight);
+})
 
 const earth_geo = new THREE.OctahedronGeometry(1.5, 5);
 const earth_mat = new THREE.MeshBasicMaterial({color: 0x00dd00});

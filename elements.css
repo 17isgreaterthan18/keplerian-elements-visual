@@ -2,10 +2,17 @@ body {
     margin: 0;
     padding: 0;
     color: white;
+    overflow: hidden;
 }
 svg {
     display: block;
     cursor: grab;
+    width: 100%;
+    height: 100%;
+}
+#viewport-container {
+    height: 100%;
+    width: 100%;
 }
 div {
     position: absolute;
