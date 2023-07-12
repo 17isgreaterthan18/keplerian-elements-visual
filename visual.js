@@ -33,11 +33,26 @@ controls.autoRotateSpeed = 4.0;
 let scene = new THREE.Scene();
 scene.background = new THREE.Color(0, 0, 0);
 
-viewportContainer.addEventListener('resize', () => {
+const updateVerticalSliders = () => {
+	if (window.matchMedia('(aspect-ratio <= 0.9)').matches) { // vertical sliders on firefox
+		Array.from(document.getElementsByClassName('vertical')).forEach( (element) => {
+			element.removeAttribute('orient');
+		})
+	} else {
+		Array.from(document.getElementsByClassName('vertical')).forEach( (element) => {
+			element.setAttribute('orient', 'vertical');
+		})
+	}
+}
+updateVerticalSliders();
+
+window.addEventListener('resize', () => {
 	camera.aspect = viewportContainer.clientWidth / viewportContainer.clientHeight;
 	camera.updateProjectionMatrix();
 
 	renderer.setSize(viewportContainer.clientWidth, viewportContainer.clientHeight);
+
+	updateVerticalSliders();
 })
 
 const earth_geo = new THREE.OctahedronGeometry(1.5, 5);
@@ -72,7 +87,6 @@ export class Orbit {
 		this.satellites.forEach( (satellite) => {
 			satelliteObjects.push(...satellite.drawInitial());
 		})
-		console.log(satelliteObjects);
 		return [this.orbitObject, this.apsidesLine, this.arrowObject, ...satelliteObjects];
 	}
 	update(resolution = this.resolution) {
